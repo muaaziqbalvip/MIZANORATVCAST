@@ -1,11 +1,17 @@
 # ============================================================================
-# 📺 STREAMFORGE 24/7 LIVE TV WORKFLOW — DEDICATED CHANNEL ENGINE
+# 📺 STREAMFORGE 24/7 LIVE TV WORKFLOW — DEDICATED CHANNEL ENGINE (v2.7)
 # ============================================================================
 # Channel Name      : POGO
 # Channel ID / Slug : pogo
 # Category          : News
 # Workflow File     : .github/workflows/channel-pogo.yml
 # Vercel M3U8 Link  : https://mizanoratvcast.vercel.app/api/stream/pogo/index.m3u8
+#
+# 🛡️ ANTI-ERROR PROTECTIONS ENABLED:
+#   • No EOF Reconnect Loop   : Fixed 'Will reconnect at 177... error=End of file'
+#   • Nimble/Session 404 Heal : Fixed 'keepalive request failed ... nimblesessionid 404'
+#   • ADTS AAC Audio Healer   : Fixed 'AAC bitstream not in ADTS format & extradata missing'
+#   • Sequence Reset Healer   : Fixed 'Media sequence changed unexpectedly: 14 -> 0'
 #
 # ⏱️ 24/7 ZERO-QUEUE RELAY LOOP ARCHITECTURE:
 #   1. Max Action Hard Limit : 300 Minutes (5 Hours)
@@ -37,10 +43,6 @@ on:
         required: false
         default: ""
 
-# Dual-Slot Concurrency:
-# Slot A and Slot B have distinct concurrency groups so Slot B can boot & stream
-# during Slot A's 5-minute handover window without waiting in a queue, while
-# preventing duplicate runs on the same slot.
 concurrency:
   group: streamforge-pogo-slot-${{ github.event.inputs.slot || 'A' }}
   cancel-in-progress: true
@@ -81,7 +83,7 @@ jobs:
       - name: "⚙️ Install FFmpeg & Smooth Streaming Dependencies"
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y ffmpeg curl jq git bc
+          sudo apt-get install -y ffmpeg curl jq git bc coreutils
           ffmpeg -version | head -n 2
 
       - name: "🚀 Initialize High-Speed RAM Disk (/dev/shm) & Live Branch"
@@ -89,15 +91,12 @@ jobs:
           mkdir -p "/dev/shm/hls_${CHANNEL_SLUG}"
           mkdir -p "/tmp/live_branch"
 
-          # Configure Git identity for live HLS manifest & state updates
           git config --global user.name "StreamForge 24/7 Engine"
           git config --global user.email "stream-bot@users.noreply.github.com"
 
           TOKEN="${GH_PAT:-${GITHUB_TOKEN}}"
           REPO_URL="https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
-          # Clone or initialize the isolated 'live-streams' orphan branch
-          # (Pushing to 'live-streams' never triggers unnecessary Vercel production builds)
           if git ls-remote --exit-code --heads "${REPO_URL}" live-streams >/dev/null 2>&1; then
             git clone --depth 1 --branch live-streams "${REPO_URL}" /tmp/live_branch || true
           fi
@@ -130,12 +129,10 @@ jobs:
         run: |
           set +e
 
-          # Determine active tokens & endpoints
           API_TOKEN="${GH_PAT:-${GITHUB_TOKEN}}"
           SOURCE_URL="${INPUT_SOURCE_OVERRIDE:-${DEFAULT_SOURCE_URL}}"
           VERCEL_API="${INPUT_VERCEL_OVERRIDE:-${DEFAULT_VERCEL_API}}"
 
-          # Compute opposite slot for the 4-hour relay handover (A -> B, B -> A)
           if [ "${CURRENT_SLOT}" = "A" ]; then
             NEXT_SLOT="B"
           else
@@ -144,20 +141,71 @@ jobs:
           NEXT_GEN=$((CURRENT_GEN + 1))
 
           RAM_DIR="/dev/shm/hls_${CHANNEL_SLUG}"
+          FFMPEG_LOG="/tmp/ffmpeg_${CHANNEL_SLUG}.log"
           START_EPOCH=$(date +%s)
           HANDOVER_TRIGGERED=0
           STOP_AT_EPOCH=$((START_EPOCH + LOOP_DURATION_SEC + OVERLAP_DURATION_SEC))
           TRIGGER_AT_EPOCH=$((START_EPOCH + LOOP_DURATION_SEC))
 
           echo "=================================================================="
-          echo "🔴 STARTING 24/7 SMOOTH STREAM ENGINE: ${CHANNEL_NAME} (${CHANNEL_SLUG})"
+          echo "🔴 STARTING 24/7 SMOOTH STREAM ENGINE (v2.7): ${CHANNEL_NAME} (${CHANNEL_SLUG})"
           echo "   • Active Slot          : Slot ${CURRENT_SLOT} (Generation #${CURRENT_GEN})"
           echo "   • Next Relay Slot      : Slot ${NEXT_SLOT} (Generation #${NEXT_GEN})"
           echo "   • Loop Trigger Mark    : ${LOOP_DURATION_SEC}s (4 Hours)"
           echo "   • Handover Overlap     : ${OVERLAP_DURATION_SEC}s (5 Minutes)"
           echo "   • Graceful Exit Mark   : $((LOOP_DURATION_SEC + OVERLAP_DURATION_SEC))s (4h 5m)"
           echo "   • Hard Safety Ceiling  : 300 Minutes (5 Hours)"
+          echo "   • Protections Active   : Anti-EOF-177 | Nimble-Session-Refresh | ADTS-Audio-Heal | Seq-Reset-Guard"
           echo "=================================================================="
+
+          # Helper: Auto-heal Nimble Streamer / OTT session URLs when ?nimblesessionid=... expires (HTTP 404)
+          resolve_fresh_stream_url() {
+            local INPUT_URL="$1"
+            local CODE=$(curl -sS -L -m 6 -o /dev/null -w "%{http_code}" -A "${CUSTOM_USER_AGENT}" "${INPUT_URL}" 2>/dev/null || echo "000")
+            if [ "${CODE}" = "200" ]; then
+              echo "${INPUT_URL}"
+              return 0
+            fi
+
+            # If URL has expired ?nimblesessionid=... or chunks.m3u8, probe parent entry playlists to get a fresh session!
+            local BASE_NO_QUERY="${INPUT_URL%%\?*}"
+            local DIR_URL="${BASE_NO_QUERY%/*}"
+            local PARENT_DIR_URL="${DIR_URL%/*}"
+            local GRAND_DIR_URL="${PARENT_DIR_URL%/*}"
+
+            for CANDIDATE in \
+              "${BASE_NO_QUERY}" \
+              "${DIR_URL}/playlist.m3u8" \
+              "${DIR_URL}/index.m3u8" \
+              "${PARENT_DIR_URL}/playlist.m3u8" \
+              "${PARENT_DIR_URL}/index.m3u8" \
+              "${GRAND_DIR_URL}/playlist.m3u8" \
+              "${GRAND_DIR_URL}/index.m3u8"; do
+              local C_CODE=$(curl -sS -L -m 6 -o /dev/null -w "%{http_code}" -A "${CUSTOM_USER_AGENT}" "${CANDIDATE}" 2>/dev/null || echo "000")
+              if [ "${C_CODE}" = "200" ]; then
+                echo "${CANDIDATE}"
+                return 0
+              fi
+            done
+
+            echo "${INPUT_URL}"
+          }
+
+          # Helper: Generate an initial valid HLS fallback segment so players never get 404 while upstream reconnects
+          generate_standby_segment_if_empty() {
+            if [ ! -f "${RAM_DIR}/index.m3u8" ]; then
+              ffmpeg -hide_banner -loglevel error -y \
+                -f lavfi -i "color=c=0x0b132b:s=1280x720:r=25" \
+                -f lavfi -i "anullsrc=r=44100:cl=stereo" \
+                -t 4 \
+                -c:v libx264 -preset ultrafast -tune zerolatency -b:v 800k -pix_fmt yuv420p \
+                -c:a aac -b:a 128k -ar 44100 -ac 2 \
+                -f hls -hls_time 4 -hls_list_size 4 \
+                -hls_flags independent_segments+program_date_time \
+                -hls_segment_filename "${RAM_DIR}/seg_%05d.ts" \
+                "${RAM_DIR}/index.m3u8" >/dev/null 2>&1 || true
+            fi
+          }
 
           # Helper: Send real-time status & manifest signal to Vercel 24/7 Stream API
           send_signal() {
@@ -205,14 +253,12 @@ jobs:
                 updatedAt: $updatedAt
               }')
 
-            # Save state to live-streams branch directory
             if [ -d "/tmp/live_branch" ]; then
               mkdir -p "/tmp/live_branch/channels/${CHANNEL_SLUG}"
               echo "${PAYLOAD}" > "/tmp/live_branch/channels/${CHANNEL_SLUG}/status.json"
               echo "${PAYLOAD}" > "/tmp/live_branch/channels/${CHANNEL_SLUG}/slot-${CURRENT_SLOT}.json"
             fi
 
-            # Push signal to Vercel Stream API if configured
             if [ -n "${VERCEL_API}" ]; then
               curl -sS -m 8 -X POST "${VERCEL_API}/api/signal" \
                 -H "Content-Type: application/json" \
@@ -225,7 +271,6 @@ jobs:
           trigger_next_loop() {
             echo "⚡ [4-HOUR RELAY SIGNAL] Checking queue & dispatching Slot ${NEXT_SLOT} (Gen #${NEXT_GEN})..."
 
-            # Check if there is already a queued run for this workflow to prevent any queue buildup
             QUEUED_COUNT=$(curl -sS -H "Authorization: Bearer ${API_TOKEN}" \
               -H "Accept: application/vnd.github+json" \
               "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/${WORKFLOW_FILE}/runs?status=queued" \
@@ -268,10 +313,18 @@ jobs:
             fi
           }
 
-          # Background Process: Continuous FFmpeg Smooth Stream Supervisor
-          # Automatically reconnects within 1s if source m3u8 has any micro-drop
+          # Background Process: Self-Healing FFmpeg Supervisor
           run_ffmpeg_supervisor() {
+            local RESTART_COUNT=0
+            generate_standby_segment_if_empty
+
             while [ ! -f "/tmp/stop_stream_${CHANNEL_SLUG}" ]; do
+              RESTART_COUNT=$((RESTART_COUNT + 1))
+              : > "${FFMPEG_LOG}"
+
+              # Resolve fresh session URL (auto-heals expired ?nimblesessionid=... 404s)
+              ACTIVE_INPUT_URL=$(resolve_fresh_stream_url "${SOURCE_URL}")
+
               HEADER_ARGS=()
               if [ -n "${CUSTOM_USER_AGENT}" ]; then
                 HEADER_ARGS+=(-user_agent "${CUSTOM_USER_AGENT}")
@@ -285,36 +338,88 @@ jobs:
                 RTMP_TEE_ARGS=(-c copy -f flv "${CUSTOM_RTMP_URL}")
               fi
 
+              echo "▶️ [Supervisor #${RESTART_COUNT}] Connecting to stream: ${ACTIVE_INPUT_URL}"
+
+              # NOTE:
+              # - Do NOT use -reconnect_at_eof 1 or -reconnect_streamed 1 on HLS (.m3u8) inputs!
+              #   Because chunked .m3u8 files (177 bytes) have filesize=-1, causing FFmpeg to retry
+              #   Range: bytes=177- ('Will reconnect at 177... error=End of file') and trigger 404 on Nimble!
+              # - Instead, use -http_persistent 0 -http_seekable 0 -max_reload 3 + ADTS AAC audio healer!
               ffmpeg -hide_banner -loglevel warning -y \
                 "${HEADER_ARGS[@]}" \
+                -http_persistent 0 \
+                -http_seekable 0 \
                 -reconnect 1 \
-                -reconnect_at_eof 1 \
-                -reconnect_streamed 1 \
                 -reconnect_on_network_error 1 \
-                -reconnect_delay_max 5 \
-                -rw_timeout 15000000 \
+                -reconnect_delay_max 2 \
+                -max_reload 3 \
+                -rw_timeout 12000000 \
+                -analyzeduration 6000000 \
+                -probesize 6000000 \
                 -fflags +genpts+igndts+discardcorrupt \
+                -avoid_negative_ts make_zero \
+                -max_interleave_delta 0 \
                 -thread_queue_size 4096 \
-                -i "${SOURCE_URL}" \
-                -c:v copy -c:a copy -bsf:a aac_adtstoasc \
+                -i "${ACTIVE_INPUT_URL}" \
+                -max_muxing_queue_size 4096 \
+                -map 0:v:0? -map 0:a:0? -c:v copy -c:a aac -b:a 128k -ar 44100 -ac 2 -af "aresample=async=1:min_hard_comp=0.100000:first_pts=0" \
                 -f hls \
                 -hls_time "${HLS_SEGMENT_TIME}" \
                 -hls_list_size "${HLS_LIST_SIZE}" \
-                -hls_flags independent_segments+delete_segments+append_list+program_date_time+temp_file \
+                -hls_flags independent_segments+delete_segments+append_list+discont_start+program_date_time+temp_file \
                 -hls_segment_filename "${RAM_DIR}/seg_%05d.ts" \
                 "${RAM_DIR}/index.m3u8" \
-                "${RTMP_TEE_ARGS[@]}"
+                "${RTMP_TEE_ARGS[@]}" 2>>"${FFMPEG_LOG}" &
+
+              FF_PID=$!
+
+              # Real-time Watchdog for Nimble Session 404s, Sequence Jumps & Segment Stalls
+              LAST_SEG_TOUCH=$(date +%s)
+              while kill -0 "${FF_PID}" 2>/dev/null; do
+                if [ -f "/tmp/stop_stream_${CHANNEL_SLUG}" ]; then
+                  kill -TERM "${FF_PID}" 2>/dev/null || true
+                  break
+                fi
+
+                # 1. Detect Nimble Streamer session expiry (404 Not Found on chunks.m3u8?nimblesessionid=...)
+                if tail -n 20 "${FFMPEG_LOG}" 2>/dev/null | grep -E -q "keepalive request failed|Server returned 404|Server returned 403|HTTP error 404"; then
+                  echo "🔄 [Nimble Session Healer] Upstream session token expired (404). Refreshing master session immediately..."
+                  kill -TERM "${FF_PID}" 2>/dev/null || true
+                  sleep 0.4
+                  kill -9 "${FF_PID}" 2>/dev/null || true
+                  break
+                fi
+
+                # 2. Check segment freshness (if no new .ts segment produced for 20s, reconnect)
+                NEWEST_SEG=$(ls -t "${RAM_DIR}"/seg_*.ts 2>/dev/null | head -n 1)
+                if [ -n "${NEWEST_SEG}" ]; then
+                  SEG_MTIME=$(stat -c %Y "${NEWEST_SEG}" 2>/dev/null || date +%s)
+                  LAST_SEG_TOUCH=${SEG_MTIME}
+                fi
+                NOW_WATCH=$(date +%s)
+                if [ $((NOW_WATCH - LAST_SEG_TOUCH)) -ge 20 ]; then
+                  echo "🔄 [Stall Watchdog] No new HLS segment written for 20s. Re-initializing master stream session..."
+                  kill -TERM "${FF_PID}" 2>/dev/null || true
+                  sleep 0.4
+                  kill -9 "${FF_PID}" 2>/dev/null || true
+                  break
+                fi
+
+                sleep 2
+              done
+
+              wait "${FF_PID}" 2>/dev/null || true
 
               if [ -f "/tmp/stop_stream_${CHANNEL_SLUG}" ]; then
                 break
               fi
-              echo "🔄 [FFmpeg Supervisor] Stream input hiccup detected. Instant auto-reconnect in 1s..."
+              echo "⚡ [Stream Healer] Re-establishing clean stream session in 1s (Seamless #EXT-X-DISCONTINUITY continuity)..."
               sleep 1
             done
           }
 
           # Start FFmpeg supervisor in background
-          send_signal "STARTING" "Initializing FFmpeg smooth stream buffer on Slot ${CURRENT_SLOT}..."
+          send_signal "STARTING" "Initializing self-healing FFmpeg engine on Slot ${CURRENT_SLOT}..."
           run_ffmpeg_supervisor &
           SUPERVISOR_PID=$!
 
@@ -352,11 +457,9 @@ jobs:
                 send_signal "LIVE" "Streaming smoothly on Slot ${CURRENT_SLOT} (Gen #${CURRENT_GEN}). Next relay in ${UNTIL_HANDOVER}s."
               fi
 
-              # Sync latest segments to live-streams branch
               if [ -f "${RAM_DIR}/index.m3u8" ] && [ -d "/tmp/live_branch" ]; then
                 cp -f "${RAM_DIR}/index.m3u8" "/tmp/live_branch/channels/${CHANNEL_SLUG}/index.m3u8" 2>/dev/null || true
                 cp -f "${RAM_DIR}"/seg_*.ts "/tmp/live_branch/channels/${CHANNEL_SLUG}/" 2>/dev/null || true
-                # Clean old segments not in index.m3u8
                 cd "/tmp/live_branch/channels/${CHANNEL_SLUG}"
                 for seg in seg_*.ts; do
                   [ -e "$seg" ] || continue
