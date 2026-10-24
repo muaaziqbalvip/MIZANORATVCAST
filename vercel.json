@@ -1,0 +1,40 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api/stream/:slug/index.m3u8",
+      "destination": "/api/stream?slug=:slug&file=index.m3u8"
+    },
+    {
+      "source": "/api/stream/:slug/:file*",
+      "destination": "/api/stream?slug=:slug&file=:file*"
+    },
+    {
+      "source": "/stream/:slug.m3u8",
+      "destination": "/api/stream?slug=:slug&file=index.m3u8"
+    },
+    {
+      "source": "/stream/:slug/index.m3u8",
+      "destination": "/api/stream?slug=:slug&file=index.m3u8"
+    },
+    {
+      "source": "/api/playlist.m3u",
+      "destination": "/api/playlist"
+    },
+    {
+      "source": "/playlist.m3u",
+      "destination": "/api/playlist"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, DELETE, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization, X-Stream-Token, X-GitHub-Token" },
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, proxy-revalidate" }
+      ]
+    }
+  ]
+}

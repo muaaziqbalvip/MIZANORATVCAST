@@ -1,0 +1,26 @@
+{
+  "name": "streamforge-24x7-github-vercel-tv",
+  "version": "2.4.0",
+  "description": "Professional 24/7 Live TV Channel Streaming System for Vercel & GitHub Actions (Per-Channel .yml Generator, 4h Loop + 5m Overlap Handover, Vercel .m3u8 Relay API)",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "build": "echo 'Static & Serverless ready for Vercel deployment'"
+  },
+  "keywords": [
+    "live-tv",
+    "m3u8",
+    "hls",
+    "github-actions",
+    "vercel",
+    "24-7-streaming",
+    "ffmpeg",
+    "iptv"
+  ],
+  "author": "StreamForge 24/7 Engine",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

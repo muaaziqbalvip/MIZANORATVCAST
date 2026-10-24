@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StreamForge 24/7 — Live TV Channel GitHub & Vercel Broadcast Engine</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+  <!-- HLS.js for playing .m3u8 live streams directly in browser -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
+</head>
+<body>
+
+  <!-- Top Broadcast Navigation Bar -->
+  <header class="top-navbar">
+    <div class="brand-wrap">
+      <div class="brand-logo">📺</div>
+      <div>
+        <div class="brand-title">
+          StreamForge 24/7 Engine
+          <span class="badge-24x7">● 4H LOOP + 5M OVERLAP + 0 QUEUE</span>
+        </div>
+        <div class="brand-subtitle">
+          GitHub Actions Per-Channel <code>.yml</code> Generator &amp; Vercel <code>.m3u8</code> 24/7 Live Stream Relay System
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-actions">
+      <button class="btn" id="btnCopyMasterM3u" title="Copy Master IPTV Playlist URL (.m3u)">
+        📋 Copy Master <code>.m3u</code>
+      </button>
+      <a class="btn btn-amber" href="/api/download-zip" download="streamforge-24x7-github-vercel-system.zip">
+        📦 Download System (<code>.zip</code>)
+      </a>
+      <button class="btn" id="btnOpenGithubSettings">
+        ⚙️ GitHub Token &amp; Repo
+      </button>
+      <button class="btn btn-primary" id="btnOpenAddChannel">
+        ➕ Add TV Channel &amp; Push <code>.yml</code>
+      </button>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- KPI Telemetry Strip -->
+    <section class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Active 24/7 Channels</div>
+        <div class="kpi-value">
+          <span id="kpiActiveCount">3</span>
+          <span class="badge-24x7">Dedicated .yml</span>
+        </div>
+        <div class="kpi-sub">Each channel runs its own isolated GitHub workflow</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Loop &amp; Handover Cycle</div>
+        <div class="kpi-value" style="color: #38bdf8;">4h 00m → +5m</div>
+        <div class="kpi-sub">4h stream → triggers next loop → 5m overlap → stops self</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">Action Ceiling &amp; Queue</div>
+        <div class="kpi-value" style="color: #34d399;">5h Cap • 0 Queue</div>
+        <div class="kpi-sub">Slot A ↔ Slot B ping-pong prevents any queue buildup</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">GitHub Repository Sync</div>
+        <div class="kpi-value" id="kpiGithubStatus" style="font-size: 1.05rem; color: #fbbf24;">
+          ⚡ Local + API Ready
+        </div>
+        <div class="kpi-sub" id="kpiGithubSub">Add GitHub Token in Settings to auto-push &amp; dispatch</div>
+      </div>
+    </section>
+
+    <!-- 24/7 Relay Architecture Visual Flow -->
+    <section class="loop-architecture-banner">
+      <div>
+        <div style="font-size: 0.82rem; font-weight: 700; color: #f8fafc; margin-bottom: 0.2rem;">
+          🔄 How Each Channel's 24/7 Dedicated <code>.yml</code> Loop Works Without Interruption:
+        </div>
+        <div style="font-size: 0.74rem; color: #94a3b8;">
+          Har channel ka alag <code>.github/workflows/channel-&lt;slug&gt;.yml</code> banta hai aur uska apna permanent Vercel <code>.m3u8</code> link generate hota hai.
+        </div>
+      </div>
+
+      <div class="arch-steps">
+        <div class="arch-step">1️⃣ <code>00:00–04:00</code> Smooth FFmpeg Stream (Slot A)</div>
+        <span class="arch-arrow">➔</span>
+        <div class="arch-step highlight-overlap">2️⃣ <code>04:00:00</code> Signal &amp; Start Next Loop (Slot B)</div>
+        <span class="arch-arrow">➔</span>
+        <div class="arch-step highlight-overlap">3️⃣ <code>04:00–04:05</code> 5-Min Parallel Overlap (Zero Drop)</div>
+        <span class="arch-arrow">➔</span>
+        <div class="arch-step">4️⃣ <code>04:05:00</code> Old Action Self-Stops (5h Max Cap)</div>
+      </div>
+    </section>
+
+    <!-- Main Split Broadcast Grid -->
+    <div class="workspace-grid">
+
+      <!-- Left Column: Channels & Per-Channel Workflow Controls -->
+      <section>
+        <div class="section-header">
+          <div class="section-title">
+            📡 Live TV Channels &amp; Dedicated GitHub <code>.yml</code> Workflows
+          </div>
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-sm" id="btnSyncAllGithub" title="Push all channel .yml files to GitHub & trigger 24/7 workflows">
+              🚀 Push All <code>.yml</code> to GitHub
+            </button>
+            <button class="btn btn-sm btn-primary" id="btnOpenAddChannel2">
+              ➕ Add New Channel
+            </button>
+          </div>
+        </div>
+
+        <div id="channelsListContainer" class="channels-list">
+          <!-- Populated dynamically by public/js/app.js -->
+        </div>
+      </section>
+
+      <!-- Right Column: Live Broadcast Monitor, Slot Visualizer & .yml Code Inspector -->
+      <aside class="monitor-panel">
+
+        <!-- Live HLS Stream Player Card -->
+        <div class="panel-card">
+          <div class="panel-card-header">
+            <div style="font-weight: 700; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem;">
+              <span>🔴 Live Broadcast Monitor</span>
+              <span id="playerChannelBadge" class="meta-pill">Red Bull TV HD</span>
+            </div>
+            <span id="playerSlotBadge" class="status-badge live">Slot A • Gen #14</span>
+          </div>
+
+          <div class="video-container">
+            <video id="liveVideoPlayer" controls playsinline muted autoplay></video>
+            <div class="video-overlay-badge" id="videoOverlayInfo">
+              <span>🟢 24/7 Vercel .m3u8 Signal</span>
+            </div>
+          </div>
+
+          <div class="player-footer">
+            <div class="link-copy-group" style="margin-bottom: 0;">
+              <div class="link-input-box">
+                <span class="link-tag">VERCEL M3U8</span>
+                <span class="link-text" id="activePlayerM3u8Url">Loading...</span>
+              </div>
+              <button class="btn btn-sm btn-primary" id="btnCopyActiveM3u8">Copy .m3u8</button>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.73rem; color: #94a3b8;">
+              <span id="playerTelemetryText">Loop Timer: 03:48:15 / 04:00:00 (5m overlap ready)</span>
+              <button class="btn btn-sm btn-amber" id="btnSimulateHandoverActive" title="Test the 4-Hour -> 5-Minute Overlap Handover Signal right now!">
+                ⚡ Test 4h→5m Handover Signal
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Inspector Card: Dedicated .yml Code / Dual-Slot Overlap / Signal Log -->
+        <div class="panel-card">
+          <div class="inspector-tabs">
+            <button class="tab-btn active" data-tab="tabYaml">
+              📄 Dedicated <code>.yml</code> Workflow
+            </button>
+            <button class="tab-btn" data-tab="tabOverlap">
+              🔄 4h + 5m Overlap Engine
+            </button>
+            <button class="tab-btn" data-tab="tabEvents">
+              ⚡ 24/7 Signal Logs
+            </button>
+          </div>
+
+          <!-- Tab 1: Generated .github/workflows/channel-<slug>.yml -->
+          <div class="tab-content active" id="tabYaml">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem; flex-wrap: wrap; gap: 0.4rem;">
+              <span style="font-family: var(--font-mono); font-size: 0.75rem; color: #c4b5fd;" id="inspectorYamlPath">
+                .github/workflows/channel-redbull-tv-hd.yml
+              </span>
+              <div style="display: flex; gap: 0.4rem;">
+                <button class="btn btn-sm" id="btnCopyYamlCode">📋 Copy .yml</button>
+                <a class="btn btn-sm btn-primary" id="btnDownloadYamlFile" href="/api/download-zip?slug=redbull-tv-hd">
+                  ⬇ Download .yml
+                </a>
+              </div>
+            </div>
+            <pre class="yaml-code-box" id="inspectorYamlContent">Loading workflow YAML...</pre>
+          </div>
+
+          <!-- Tab 2: Dual-Slot Ping-Pong Handover Diagram -->
+          <div class="tab-content" id="tabOverlap">
+            <div class="relay-diagram" id="relayDiagramContainer">
+              <div class="slot-lane active-lane" id="laneSlotA">
+                <div class="slot-lane-header">
+                  <span style="color: #2dd4bf;">🏃 Runner Slot A (Concurrency: slot-A)</span>
+                  <span id="laneSlotAStatus">STREAMING (00:00 → 04:00)</span>
+                </div>
+                <div style="font-size: 0.73rem; color: #94a3b8;">
+                  Runs FFmpeg smooth buffer for 4 hours (<code>14,400s</code>). At <code>04:00:00</code>, sends GitHub API <code>workflow_dispatch</code> signal to start <strong>Slot B</strong>, continues streaming for <strong>5 minutes (<code>300s</code>)</strong>, then stops itself at <code>04:05:00</code>.
+                </div>
+              </div>
+
+              <div class="slot-lane" id="laneSlotB">
+                <div class="slot-lane-header">
+                  <span style="color: #fbbf24;">🏃 Runner Slot B (Concurrency: slot-B)</span>
+                  <span id="laneSlotBStatus">STANDBY / WARM OVERLAP READY</span>
+                </div>
+                <div style="font-size: 0.73rem; color: #94a3b8;">
+                  Boots immediately when signaled at <code>04:00:00</code> (Zero Queue because Slot B has its own concurrency group!). Streams in parallel during the 5-minute overlap, then carries the 24/7 stream for the next 4 hours and signals <strong>Slot A</strong> back!
+                </div>
+              </div>
+
+              <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 0.65rem 0.8rem; font-size: 0.74rem; color: #d1fae5;">
+                ✅ <strong>Why Zero Queue &amp; Zero Drop?</strong><br/>
+                GitHub Actions hard limit ~6h (configured cap: <strong>5 Hours / 300m</strong>). Because each run self-triggers the alternate slot at <strong>4 Hours</strong> and exits at <strong>4h 05m</strong>, there is always 1 active stream (and 2 during the 5-minute warm handover), never a backlog queue!
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 3: Live Signal & Event Logs -->
+          <div class="tab-content" id="tabEvents">
+            <div class="events-list" id="eventsListContainer">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+        </div>
+
+      </aside>
+
+    </div>
+  </main>
+
+  <!-- Modal 1: Add / Edit Live TV Channel -->
+  <div class="modal-backdrop" id="modalAddChannel">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div>
+          <h3 style="font-size: 1.05rem; font-weight: 800;" id="channelModalTitle">
+            ➕ Add Live TV Channel &amp; Generate 24/7 GitHub <code>.yml</code>
+          </h3>
+          <div style="font-size: 0.75rem; color: var(--text-secondary);">
+            Automatically creates <code>.github/workflows/channel-&lt;slug&gt;.yml</code>, pushes via GitHub Token &amp; generates Vercel <code>.m3u8</code> link
+          </div>
+        </div>
+        <button class="btn btn-sm" id="btnCloseAddChannel">✕</button>
+      </div>
+
+      <form id="formAddChannel">
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Channel Name *</label>
+              <input type="text" class="form-input" id="inputChannelName" placeholder="e.g. Geo News HD / PTV Sports" required />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Channel Slug / ID (Auto)</label>
+              <input type="text" class="form-input" id="inputChannelSlug" placeholder="e.g. geo-news-hd" />
+              <span class="form-hint" id="hintWorkflowFile">Creates: .github/workflows/channel-geo-news-hd.yml</span>
+            </div>
+
+            <div class="form-group full-width">
+              <label class="form-label">Source Transcribe / Live Stream <code>.m3u8</code> Link *</label>
+              <input type="url" class="form-input" id="inputSourceUrl" placeholder="https://example.com/live/channel/index.m3u8" required />
+              <span class="form-hint">
+                Paste the input <code>.m3u8</code> stream link. The system will connect it to the 24/7 GitHub Action loop &amp; generate your permanent Vercel <code>.m3u8</code> URL.
+              </span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Category / Group</label>
+              <select class="form-select" id="inputCategory">
+                <option value="News">News</option>
+                <option value="Sports">Sports</option>
+                <option value="Entertainment">Entertainment</option>
+                <option value="Movies">Movies</option>
+                <option value="Islamic">Islamic</option>
+                <option value="Documentaries">Documentaries</option>
+                <option value="Music">Music</option>
+                <option value="Kids">Kids</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Smooth Stream Engine Mode (FFmpeg)</label>
+              <select class="form-select" id="inputQualityMode">
+                <option value="copy">⚡ Copy / Remux (Ultra-Low Latency, Fast)</option>
+                <option value="720p">🎬 720p HD Smooth Transcode (H.264 + AAC 30fps)</option>
+                <option value="1080p">📺 1080p Full HD Broadcast Transcode</option>
+                <option value="480p">📱 480p Bandwidth Saver Transcode</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Loop Trigger Duration (Hours)</label>
+              <input type="number" class="form-input" id="inputLoopHours" value="4" min="1" max="5" step="0.5" />
+              <span class="form-hint">Default: <strong>4 Hours</strong> (triggers next workflow loop at 4h)</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Warm Handover Overlap (Minutes)</label>
+              <input type="number" class="form-input" id="inputOverlapMinutes" value="5" min="1" max="15" />
+              <span class="form-hint">Default: <strong>5 Minutes</strong> overlap before stopping self (5h max cap)</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Channel Logo URL (Optional)</label>
+              <input type="url" class="form-input" id="inputLogoUrl" placeholder="https://.../logo.png" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Custom HTTP Referer (Optional)</label>
+              <input type="text" class="form-input" id="inputReferer" placeholder="https://player-referer.com/" />
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn" id="btnCancelAddChannel">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btnSubmitChannel">
+            🚀 Generate <code>.yml</code>, Push to GitHub &amp; Start 24/7 Stream
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 2: GitHub Token & Repository Settings -->
+  <div class="modal-backdrop" id="modalGithubSettings">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div>
+          <h3 style="font-size: 1.05rem; font-weight: 800;">
+            ⚙️ GitHub Token &amp; Vercel Stream API Configuration
+          </h3>
+          <div style="font-size: 0.75rem; color: var(--text-secondary);">
+            Used to push <code>.github/workflows/channel-&lt;slug&gt;.yml</code> files &amp; trigger <code>workflow_dispatch</code> runs automatically
+          </div>
+        </div>
+        <button class="btn btn-sm" id="btnCloseGithubSettings">✕</button>
+      </div>
+
+      <form id="formGithubSettings">
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">GitHub Username / Organization *</label>
+              <input type="text" class="form-input" id="inputGhOwner" placeholder="e.g. your-github-username" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">GitHub Repository Name *</label>
+              <input type="text" class="form-input" id="inputGhRepo" placeholder="e.g. live-tv-stream-engine" />
+            </div>
+
+            <div class="form-group full-width">
+              <label class="form-label">GitHub Personal Access Token (PAT) *</label>
+              <input type="password" class="form-input" id="inputGhToken" placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" />
+              <span class="form-hint">
+                Create a token at <strong>GitHub → Settings → Developer settings → Personal access tokens (Classic)</strong> with <code>repo</code> and <code>workflow</code> scopes checked. Also add it as a repository secret named <code>GH_PAT</code> so the 4-hour loop can self-trigger the next workflow run!
+              </span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Target Branch</label>
+              <input type="text" class="form-input" id="inputGhBranch" value="main" placeholder="main" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Vercel App Public URL (Auto-detected)</label>
+              <input type="url" class="form-input" id="inputVercelUrl" placeholder="https://your-app.vercel.app" />
+            </div>
+          </div>
+
+          <div id="githubVerifyResultBox" style="display: none; margin-top: 0.5rem; padding: 0.75rem; border-radius: 8px; font-size: 0.8rem;"></div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn" id="btnCancelGithubSettings">Close</button>
+          <button type="submit" class="btn btn-primary" id="btnSaveVerifyGithub">
+            ✅ Save &amp; Verify GitHub Connection
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
