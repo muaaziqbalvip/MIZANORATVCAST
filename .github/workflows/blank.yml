@@ -1,0 +1,86 @@
+name: ZIP Unzip & Merge
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "**.zip"
+
+permissions:
+  contents: write
+
+jobs:
+  unzip:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find ZIP File
+        id: zip
+        shell: bash
+        run: |
+          ZIP=$(find . -type f -iname "*.zip" | head -n 1)
+
+          if [ -z "$ZIP" ]; then
+            echo "No ZIP file found!"
+            exit 1
+          fi
+
+          echo "Found ZIP: $ZIP"
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+
+      - name: Extract ZIP
+        shell: bash
+        run: |
+          rm -rf unzip
+          mkdir -p unzip
+
+          if command -v bsdtar >/dev/null 2>&1; then
+            bsdtar -xf "${{ steps.zip.outputs.zip }}" -C unzip || true
+          else
+            unzip -oq "${{ steps.zip.outputs.zip }}" -d unzip || true
+          fi
+
+          if [ -z "$(find unzip -type f | head -n 1)" ]; then
+            echo "Extraction failed."
+            exit 1
+          fi
+
+      - name: Remove GitHub Folder
+        run: |
+          find unzip -type d -name ".github" -exec rm -rf {} + || true
+
+      - name: Merge Files
+        shell: bash
+        run: |
+          cp -a unzip/. .
+
+      - name: Cleanup
+        run: |
+          rm -rf unzip
+          find . -maxdepth 1 -iname "*.zip" -delete
+
+      - name: Commit Changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add .
+
+          if git diff --cached --quiet; then
+            echo "No changes."
+            exit 0
+          fi
+
+          git commit -m "Auto unzip and merge"
+
+      - name: Push Changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref_name }}
