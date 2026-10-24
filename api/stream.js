@@ -1,12 +1,6 @@
 /**
  * StreamForge 24/7 — Vercel Live HLS (.m3u8) Stream & Relay Endpoint (/api/stream)
- *
- * Generates a permanent Vercel .m3u8 link per channel:
- *   https://<your-vercel-domain>/api/stream/<channel-slug>/index.m3u8
- *
- * Connects seamlessly to:
- *   1. Active GitHub Action Runner Signal & `live-streams` branch HLS buffer
- *   2. Intelligent Edge HLS Manifest Rewriter & CORS/Header Proxy for 24/7 uninterrupted playback
+ * (v2.6 — Includes Automatic Nimble Streamer `nimblesessionid` 404 Session Healer)
  */
 
 const {
@@ -33,16 +27,76 @@ function resolveUrl(base, relative) {
 }
 
 /**
- * Rewrites an HLS .m3u8 manifest so all relative URLs (variant playlists, segments, keys)
- * point either to the proxy endpoint (when custom headers/CORS are needed) or absolute URLs.
+ * Generates candidate parent/entry URLs when a Nimble Streamer / OTT URL with
+ * an expired `?nimblesessionid=...` or `chunks.m3u8` returns HTTP 404.
  */
+function buildSessionRecoveryCandidates(rawUrl) {
+  const candidates = [rawUrl];
+  try {
+    const u = new URL(rawUrl);
+    // 1. Strip expired nimblesessionid / wmsAuthSign query param
+    if (u.searchParams.has('nimblesessionid')) {
+      const noSession = new URL(rawUrl);
+      noSession.searchParams.delete('nimblesessionid');
+      candidates.push(noSession.toString());
+    }
+
+    const baseNoQuery = `${u.origin}${u.pathname}`;
+    if (!candidates.includes(baseNoQuery)) candidates.push(baseNoQuery);
+
+    const parts = u.pathname.split('/').filter(Boolean);
+    if (parts.length >= 2) {
+      // Same directory playlist.m3u8 and index.m3u8
+      const dirPath = '/' + parts.slice(0, -1).join('/');
+      candidates.push(`${u.origin}${dirPath}/playlist.m3u8`);
+      candidates.push(`${u.origin}${dirPath}/index.m3u8`);
+
+      // Parent directory playlist.m3u8 and index.m3u8 (e.g. /live/pogo_sd_abr/playlist.m3u8)
+      if (parts.length >= 3) {
+        const parentDir = '/' + parts.slice(0, -2).join('/');
+        candidates.push(`${u.origin}${parentDir}/playlist.m3u8`);
+        candidates.push(`${u.origin}${parentDir}/index.m3u8`);
+      }
+      if (parts.length >= 4) {
+        const grandParentDir = '/' + parts.slice(0, -3).join('/');
+        candidates.push(`${u.origin}${grandParentDir}/playlist.m3u8`);
+        candidates.push(`${u.origin}${grandParentDir}/index.m3u8`);
+      }
+    }
+  } catch (_) {}
+
+  return [...new Set(candidates)];
+}
+
+async function fetchWithSessionRecovery(targetUrl, headers) {
+  const candidates = buildSessionRecoveryCandidates(targetUrl);
+  let lastRes = null;
+
+  for (const candidateUrl of candidates) {
+    try {
+      const res = await fetch(candidateUrl, {
+        headers: {
+          ...headers,
+          'Connection': 'close'
+        },
+        redirect: 'follow'
+      });
+      if (res.ok) {
+        return { res, resolvedUrl: res.url || candidateUrl, healed: candidateUrl !== targetUrl };
+      }
+      lastRes = res;
+    } catch (_) {}
+  }
+
+  return { res: lastRes, resolvedUrl: targetUrl, healed: false };
+}
+
 function rewriteM3u8Manifest(manifestText, sourceManifestUrl, baseUrl, slug, useSegmentProxy = false) {
   const lines = manifestText.split(/\r?\n/);
   const rewritten = lines.map(line => {
     const trimmed = line.trim();
     if (!trimmed) return line;
 
-    // Rewrite URI="..." attributes inside #EXT-X-MEDIA or #EXT-X-KEY or #EXT-X-MAP tags
     if (trimmed.startsWith('#')) {
       return line.replace(/URI="([^"]+)"/g, (match, uriVal) => {
         const absUri = resolveUrl(sourceManifestUrl, uriVal);
@@ -54,7 +108,6 @@ function rewriteM3u8Manifest(manifestText, sourceManifestUrl, baseUrl, slug, use
       });
     }
 
-    // Non-comment line is a child playlist (.m3u8) or media segment (.ts, .m4s, .aac)
     const absUrl = resolveUrl(sourceManifestUrl, trimmed);
     const isSubPlaylist = /\.m3u8(\?|$)/i.test(absUrl);
 
@@ -82,7 +135,6 @@ module.exports = async function handler(req, res) {
   const baseUrl = getBaseUrl(req, store);
   const urlObj = new URL(req.url, baseUrl);
 
-  // Extract slug & file from query or path (/api/stream/:slug/:file)
   let slug = urlObj.searchParams.get('slug') || '';
   let file = urlObj.searchParams.get('file') || 'index.m3u8';
   const proxyTargetUrl = urlObj.searchParams.get('url') || '';
@@ -109,7 +161,6 @@ module.exports = async function handler(req, res) {
 
   const channel = computeChannelLiveTelemetry(rawChannel);
 
-  // Attach live 24/7 relay signal telemetry headers
   res.setHeader('X-StreamForge-Channel', channel.slug);
   res.setHeader('X-StreamForge-Slot', channel.telemetry.activeSlot);
   res.setHeader('X-StreamForge-Next-Slot', channel.telemetry.nextSlot);
@@ -132,27 +183,26 @@ module.exports = async function handler(req, res) {
     }
 
     try {
-      const upstreamRes = await fetch(proxyTargetUrl, {
-        headers: upstreamHeaders,
-        redirect: 'follow'
-      });
+      const { res: upstreamRes, resolvedUrl, healed } = await fetchWithSessionRecovery(proxyTargetUrl, upstreamHeaders);
 
-      if (!upstreamRes.ok) {
-        res.statusCode = upstreamRes.status;
-        return res.end(`Upstream stream returned HTTP ${upstreamRes.status}`);
+      if (!upstreamRes || !upstreamRes.ok) {
+        res.statusCode = upstreamRes ? upstreamRes.status : 502;
+        return res.end(`Upstream stream returned HTTP ${res.statusCode}`);
+      }
+
+      if (healed) {
+        res.setHeader('X-StreamForge-Session-Healed', 'true');
       }
 
       const contentType = upstreamRes.headers.get('content-type') || '';
-      const finalUrl = upstreamRes.url || proxyTargetUrl;
-
       if (
         contentType.includes('mpegurl') ||
-        /\.m3u8(\?|$)/i.test(finalUrl)
+        /\.m3u8(\?|$)/i.test(resolvedUrl)
       ) {
         const text = await upstreamRes.text();
         const rewritten = rewriteM3u8Manifest(
           text,
-          finalUrl,
+          resolvedUrl,
           baseUrl,
           channel.slug,
           Boolean(channel.referer)
@@ -162,7 +212,6 @@ module.exports = async function handler(req, res) {
         return res.end(rewritten);
       }
 
-      // Binary segment (.ts, .m4s, .aac)
       const arrayBuf = await upstreamRes.arrayBuffer();
       res.statusCode = 200;
       res.setHeader('Content-Type', contentType || 'video/mp2t');
@@ -174,17 +223,17 @@ module.exports = async function handler(req, res) {
   }
 
   // Case 2: Primary Vercel .m3u8 endpoint (/api/stream/:slug/index.m3u8)
-  // Step 2A: Check if GitHub 'live-streams' branch has an active FFmpeg HLS relay manifest
   const ghOwner = store.settings?.githubOwner || process.env.GITHUB_OWNER || '';
   const ghRepo = store.settings?.githubRepo || process.env.GITHUB_REPO || '';
 
-  if (ghOwner && ghRepo && req.url.includes('mode=github_branch')) {
+  // Try GitHub 'live-streams' branch first if FFmpeg runner is actively pushing segments
+  if (ghOwner && ghRepo) {
     const rawGhUrl = `https://raw.githubusercontent.com/${encodeURIComponent(ghOwner)}/${encodeURIComponent(ghRepo)}/live-streams/channels/${channel.slug}/index.m3u8`;
     try {
       const ghRes = await fetch(rawGhUrl, { headers: { 'Cache-Control': 'no-cache' } });
       if (ghRes.ok) {
         const ghManifest = await ghRes.text();
-        if (ghManifest.includes('#EXTM3U')) {
+        if (ghManifest.includes('#EXTM3U') && ghManifest.includes('.ts')) {
           const rewritten = rewriteM3u8Manifest(ghManifest, rawGhUrl, baseUrl, channel.slug, false);
           res.statusCode = 200;
           res.setHeader('Content-Type', 'application/vnd.apple.mpegurl; charset=utf-8');
@@ -195,30 +244,29 @@ module.exports = async function handler(req, res) {
     } catch (_) {}
   }
 
-  // Step 2B: Fetch & rewrite live stream from channel's sourceUrl connected with runner signal
+  // Fetch & rewrite live stream from channel's sourceUrl with automatic Nimble session recovery
   try {
     const activeSourceUrl = store.signals?.[channel.slug]?.sourceUrl || channel.sourceUrl;
-    const upstreamRes = await fetch(activeSourceUrl, {
-      headers: upstreamHeaders,
-      redirect: 'follow'
-    });
+    const { res: upstreamRes, resolvedUrl, healed } = await fetchWithSessionRecovery(activeSourceUrl, upstreamHeaders);
 
-    if (!upstreamRes.ok) {
-      res.statusCode = upstreamRes.status;
+    if (!upstreamRes || !upstreamRes.ok) {
+      res.statusCode = upstreamRes ? upstreamRes.status : 502;
       res.setHeader('Content-Type', 'application/json');
       return res.end(JSON.stringify({
         ok: false,
-        error: `Source stream returned HTTP ${upstreamRes.status}`,
+        error: `Source stream returned HTTP ${res.statusCode}`,
         sourceUrl: activeSourceUrl
       }));
     }
 
-    const finalUrl = upstreamRes.url || activeSourceUrl;
-    const manifestText = await upstreamRes.text();
+    if (healed) {
+      res.setHeader('X-StreamForge-Session-Healed', 'true');
+    }
 
+    const manifestText = await upstreamRes.text();
     const rewrittenManifest = rewriteM3u8Manifest(
       manifestText,
-      finalUrl,
+      resolvedUrl,
       baseUrl,
       channel.slug,
       Boolean(channel.referer)
