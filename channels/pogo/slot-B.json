@@ -4,14 +4,14 @@
   "state": "LIVE",
   "slot": "B",
   "nextSlot": "A",
-  "generation": 8,
-  "elapsedSeconds": 12,
+  "generation": 10,
+  "elapsedSeconds": 0,
   "loopDurationSeconds": 14400,
   "overlapDurationSeconds": 300,
-  "runId": "40194073083",
+  "runId": "40231870460",
   "repository": "muaaziqbalvip/MIZANORATVCAST",
   "sourceUrl": "https://stream.ottplus.live/live/pogo_sd_abr/index.m3u8",
-  "message": "Streaming smoothly on Slot B (Gen #8). Next relay in 14388s.",
-  "manifestBase64": "I0VYVE0zVQojRVhULVgtVkVSU0lPTjo2CiNFWFQtWC1UQVJHRVREVVJBVElPTjo0CiNFWFQtWC1NRURJQS1TRVFVRU5DRTowCiNFWFQtWC1ESVNDT05USU5VSVRZCiNFWFQtWC1JTkRFUEVOREVOVC1TRUdNRU5UUwojRVhUSU5GOjQuMDAwMDAwLAojRVhULVgtUFJPR1JBTS1EQVRFLVRJTUU6MjAyNi0xMC0yNVQxMjo0MDowMy4zMTYrMDAwMApzZWdfMDAwMDAudHMKI0VYVC1YLURJU0NPTlRJTlVJVFkKI0VYVElORjo0LjAwMDAwMCwKI0VYVC1YLVBST0dSQU0tREFURS1USU1FOjIwMjYtMTAtMjVUMTI6NDA6MTAuMDkwKzAwMDAKc2VnXzAwMDAxLnRzCg==",
-  "updatedAt": "2026-10-25T12:40:15Z"
+  "message": "Streaming smoothly on Slot B (Gen #10). Next relay in 14400s.",
+  "manifestBase64": "",
+  "updatedAt": "2026-10-25T20:40:50Z"
 }
