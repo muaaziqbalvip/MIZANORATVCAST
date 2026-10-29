@@ -2,16 +2,16 @@
   "slug": "pogo",
   "name": "POGO",
   "state": "LIVE",
-  "slot": "B",
-  "nextSlot": "A",
-  "generation": 24,
+  "slot": "A",
+  "nextSlot": "B",
+  "generation": 29,
   "elapsedSeconds": 0,
   "loopDurationSeconds": 14400,
   "overlapDurationSeconds": 300,
-  "runId": "40638264625",
+  "runId": "40801061886",
   "repository": "muaaziqbalvip/MIZANORATVCAST",
   "sourceUrl": "https://stream.ottplus.live/live/pogo_sd_abr/index.m3u8",
-  "message": "Streaming smoothly on Slot B (Gen #24). Next relay in 14400s.",
+  "message": "Streaming smoothly on Slot A (Gen #29). Next relay in 14400s.",
   "manifestBase64": "",
-  "updatedAt": "2026-10-28T05:29:33Z"
+  "updatedAt": "2026-10-29T01:33:12Z"
 }
