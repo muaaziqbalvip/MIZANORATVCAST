@@ -4,14 +4,14 @@
   "state": "LIVE",
   "slot": "A",
   "nextSlot": "B",
-  "generation": 37,
-  "elapsedSeconds": 11,
+  "generation": 39,
+  "elapsedSeconds": 12,
   "loopDurationSeconds": 14400,
   "overlapDurationSeconds": 300,
-  "runId": "41035008093",
+  "runId": "41100764554",
   "repository": "muaaziqbalvip/MIZANORATVCAST",
   "sourceUrl": "https://stream.ottplus.live/live/pogo_sd_abr/index.m3u8",
-  "message": "Streaming smoothly on Slot A (Gen #37). Next relay in 14389s.",
-  "manifestBase64": "I0VYVE0zVQojRVhULVgtVkVSU0lPTjo2CiNFWFQtWC1UQVJHRVREVVJBVElPTjo0CiNFWFQtWC1NRURJQS1TRVFVRU5DRTowCiNFWFQtWC1JTkRFUEVOREVOVC1TRUdNRU5UUwojRVhUSU5GOjQuMDAwMDAwLAojRVhULVgtUFJPR1JBTS1EQVRFLVRJTUU6MjAyNi0xMC0zMFQwOTo0MDoxMC4yNzkrMDAwMApzZWdfMDAwMDAudHMKI0VYVC1YLUVORExJU1QK",
-  "updatedAt": "2026-10-30T09:40:21Z"
+  "message": "Streaming smoothly on Slot A (Gen #39). Next relay in 14388s.",
+  "manifestBase64": "I0VYVE0zVQojRVhULVgtVkVSU0lPTjo2CiNFWFQtWC1UQVJHRVREVVJBVElPTjo0CiNFWFQtWC1NRURJQS1TRVFVRU5DRTowCiNFWFQtWC1ESVNDT05USU5VSVRZCiNFWFQtWC1JTkRFUEVOREVOVC1TRUdNRU5UUwojRVhUSU5GOjQuMDAwMDAwLAojRVhULVgtUFJPR1JBTS1EQVRFLVRJTUU6MjAyNi0xMC0zMFQxNzo0MTozNS43MDErMDAwMApzZWdfMDAwMDAudHMKI0VYVC1YLURJU0NPTlRJTlVJVFkKI0VYVElORjo0LjAwMDAwMCwKI0VYVC1YLVBST0dSQU0tREFURS1USU1FOjIwMjYtMTAtMzBUMTc6NDE6NDIuNzE0KzAwMDAKc2VnXzAwMDAxLnRzCg==",
+  "updatedAt": "2026-10-30T17:41:47Z"
 }
